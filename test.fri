@@ -1,0 +1,15 @@
+
+def fib (n) =
+    match n
+    | 0 = 0
+    | 1 = 1
+    | n = fib (n - 1) + fib (n - 2)
+    end
+
+mod List = mod
+    con Nil
+    con Cons _, _
+    
+    def len (Nil) = 0
+    def len (Cons x, xs) = 1 + len xs
+end
