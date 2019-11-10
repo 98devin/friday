@@ -1,9 +1,8 @@
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident(pub String);
 
 #[derive(Debug, Clone)]
-pub enum Atom< T> {
+pub enum Atom<T> {
     Hole,
     Number(f64),
     Ident(Ident),

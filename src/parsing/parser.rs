@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.17.2"
-// sha256: ce2ccf39268c46310ff69c59d2ec28e8218aa0a4d872a9857c7b865662b8d
+// sha256: 81b5f63975fdbb786168f49ba188303fd74686695d0636247221e3e6ba9a9bc
 use crate::parsing::ast::{*};
 use std::str::FromStr;
 use std::iter;
