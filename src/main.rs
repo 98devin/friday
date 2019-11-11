@@ -1,7 +1,9 @@
-mod parsing;
-use parsing::parser;
 
+mod parsing;
 mod ir;
+
+pub use parsing::parser;
+pub use parsing::ast;
 
 use std::env;
 use std::fs;
@@ -15,19 +17,19 @@ fn main() {
     for arg in args.iter() {
         println!("--- {} ---", arg);
         let file_text = match fs::read_to_string(arg) {
+            Ok(file_text) => file_text,
             Err(e) => {
-                println!("{}", e);
+                println!("file error: {}", e);
                 continue;
             }
-            Ok(file_text) => file_text,
         };
 
         let decls = match parse_sequence.parse(&file_text) {
+            Ok(decls) => decls,
             Err(e) => {
-                println!("{}", e);
+                println!("parse error: {}", e);
                 continue;
             }
-            Ok(decls) => decls,
         };
 
         for decl in decls.iter() {

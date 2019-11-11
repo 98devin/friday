@@ -34,6 +34,7 @@ Atom<T> : Atom<T> = {
     <Number> => Atom::Number(<>),
     <Identifier> => Atom::Ident(<>),
     <String> => Atom::String(<>),
+    "(" ")"  => Atom::Unit,
     <Parenthesized<T>> => Atom::Nested(Box::new(<>)),
 };
 

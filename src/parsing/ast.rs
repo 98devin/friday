@@ -4,6 +4,7 @@ pub struct Ident(pub String);
 #[derive(Debug, Clone)]
 pub enum Atom<T> {
     Hole,
+    Unit,
     Number(f64),
     Ident(Ident),
     String(String),
@@ -13,9 +14,9 @@ pub enum Atom<T> {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Flat(Vec<Atom<Expr>>),
-    Scoped(Vec<Decl>, Box<Expr>),
     Func(Box<Patn>, Box<Expr>),
     Match(Box<Expr>, Vec<(Patn, Expr)>),
+    Scoped(Vec<Decl>, Box<Expr>),
 }
 
 #[derive(Debug, Clone)]

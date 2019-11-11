@@ -1,46 +1,66 @@
-use std::collections::HashMap;
-use std::marker::PhantomData;
 
-use crate::ir;
+use std::collections::{HashMap};
+
+use crate::ir::{Ident, Expr, SymbolTable};
+
 
 #[derive(Debug, Clone)]
 pub struct Module {
+    name: String,
     scope: Vec<ModuleRef>,
-    child: HashMap<ir::Ident, ModuleRef>,
+    body:  Vec<Expr>,
+    child: HashMap<Ident, ModuleRef>,
+    symbols: SymbolTable,
 }
 
 impl Module {
-    fn new() -> Module {
+    fn new(name : String) -> Module {
         Module {
+            name,
             scope: Vec::new(),
+            body:  Vec::new(),
             child: HashMap::new(),
+            symbols: SymbolTable::new(),
         }
+    }
+
+    fn name(&self) -> &String {
+        &self.name
+    }
+
+    fn lookup_child(&self, child_id: &Ident) -> Option<ModuleRef> {
+        self.child.get(child_id).copied()
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ModuleRef(usize, *const ModuleManager);
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct ModuleRef(usize);
 
 #[derive(Debug, Clone)]
-pub struct ModuleManager {
+pub struct ModuleTable {
     modules: Vec<Module>,
 }
 
-impl ModuleManager {
+impl ModuleTable {
+
+    pub fn new() -> ModuleTable {
+        ModuleTable {
+            modules: Vec::new()
+        }
+    }
+
     pub fn get_module(&self, mod_ref: ModuleRef) -> &Module {
-        let self_ptr = self as *const ModuleManager;
-        assert_eq!(mod_ref.1, self_ptr);
         &self.modules[mod_ref.0]
     }
 
     pub fn get_module_mut(&mut self, mod_ref: ModuleRef) -> &mut Module {
-        let self_ptr = self as *const ModuleManager;
-        assert_eq!(mod_ref.1, self_ptr);
         &mut self.modules[mod_ref.0]
     }
 
-    pub fn new_module(&mut self) -> ModuleRef {
-        self.modules.push(Module::new());
-        ModuleRef(self.modules.len() - 1, self as *const ModuleManager)
+    pub fn new_module(&mut self, name: String) -> ModuleRef {
+        let modl_ref = ModuleRef(self.modules.len());
+        self.modules.push(Module::new(name));
+        modl_ref
     }
 }
