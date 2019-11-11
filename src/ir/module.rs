@@ -24,12 +24,16 @@ impl Module {
         }
     }
 
-    fn name(&self) -> &String {
+    pub fn name(&self) -> &String {
         &self.name
     }
 
-    fn lookup_child(&self, child_id: &Ident) -> Option<ModuleRef> {
+    pub fn lookup_child(&self, child_id: &Ident) -> Option<ModuleRef> {
         self.child.get(child_id).copied()
+    }
+
+    pub fn add_to_scope(&mut self, modl: ModuleRef) {
+        self.scope.push(modl);
     }
 }
 
@@ -58,9 +62,9 @@ impl ModuleTable {
         &mut self.modules[mod_ref.0]
     }
 
-    pub fn new_module(&mut self, name: String) -> ModuleRef {
+    pub fn new_module(&mut self, name: String) -> (ModuleRef, &mut Module) {
         let modl_ref = ModuleRef(self.modules.len());
         self.modules.push(Module::new(name));
-        modl_ref
+        (modl_ref, self.modules.last_mut().unwrap())
     }
 }
