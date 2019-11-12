@@ -10,7 +10,7 @@ def fib (n) =
 mod List = mod
     con Nil
     con Cons _, _
-    
-    def len (Nil) = 0
-    def len (Cons x, xs) = 1 + len xs
 end
+
+def len (use List in Nil) = 0
+def len (use List in Cons x, xs) = 1 + len xs

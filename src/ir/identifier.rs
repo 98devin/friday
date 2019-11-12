@@ -1,7 +1,7 @@
-
 use crate::ast;
+use crate::ir;
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
@@ -33,13 +33,17 @@ impl NameTable {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
                 let id = *vacant.insert(Ident(next_ix));
-                let _  = self.id_to_name.insert(id, name);
+                let _ = self.id_to_name.insert(id, name);
                 id
             }
         }
     }
+}
 
-    pub fn get_name(&self, id: Ident) -> &String {
+impl ir::Storage<String> for NameTable {
+    type Ref = Ident;
+
+    fn get(&self, id: Ident) -> &String {
         &self.id_to_name[&id]
     }
 }

@@ -1,29 +1,30 @@
-
 mod error;
-mod parsing;
 mod ir;
+mod parsing;
 
-pub use parsing::parser;
 pub use parsing::ast;
+pub use parsing::parser;
+
+use ir::{Module, ModuleRef, Storage, StorageMut};
 
 use std::env;
 
 fn main() {
-
     println!("tgif");
 
-    let mut ctx = ir::initial_context();
+    let mut ctx = ir::Context::new();
 
     for arg in env::args().skip(1) {
         println!("--- {} ---", arg);
-        
-        let modl_ref = match ir::process_file(&mut ctx, &arg) {
+        let modl_ref = match ctx.process_file(&arg) {
             Ok(modl_ref) => modl_ref,
-            Err(e) => { eprintln!("{}", e); continue },
+            Err(e) => {
+                eprintln!("{}", e);
+                continue;
+            }
         };
 
-        let modl = ctx.modules.get_module(modl_ref);
+        let modl: &Module = ctx.get(modl_ref);
         println!("{}: {:?}", &modl.name(), modl);
-
     }
 }

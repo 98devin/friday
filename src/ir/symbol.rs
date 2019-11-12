@@ -1,6 +1,6 @@
-
-use std::collections::{HashMap};
-use crate::ir::{Ident, Decl, Data};
+use crate::ast;
+use crate::ir::{Data, Decl, Ident, NameTable, Storage, StorageMut};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
@@ -15,6 +15,15 @@ pub struct SymbolTable {
 pub enum Sign {
     Patn,
     Word(Ident),
+}
+
+impl Sign {
+    pub fn from_ast(ast_sign: ast::Sign, names: &mut NameTable) -> Sign {
+        match ast_sign {
+            ast::Sign::Patn(_) => Sign::Patn,
+            ast::Sign::Word(id) => Sign::Word(names.make_ident(id.0)),
+        }
+    }
 }
 
 #[repr(transparent)]
@@ -35,33 +44,33 @@ impl SymbolTable {
         }
     }
 
-    pub fn get_decl(&self, decl_ref: DeclRef) -> &Decl {
-        &self.decls[decl_ref.0]
+    pub fn decls(&self) -> impl IntoIterator<Item = &Decl> {
+        self.decls.iter()
     }
 
-    pub fn get_data(&self, data_ref: DataRef) -> &Data {
-        &self.datas[data_ref.0]
+    pub fn datas(&self) -> impl IntoIterator<Item = &Data> {
+        self.datas.iter()
     }
 
-    pub fn get_decl_mut(&mut self, decl_ref: DeclRef) -> &mut Decl {
-        &mut self.decls[decl_ref.0]
+    pub fn decls_mut(&mut self) -> impl IntoIterator<Item = &mut Decl> {
+        self.decls.iter_mut()
     }
 
-    pub fn get_data_mut(&mut self, data_ref: DataRef) -> &mut Data {
-        &mut self.datas[data_ref.0]
+    pub fn datas_mut(&mut self) -> impl IntoIterator<Item = &mut Data> {
+        self.datas.iter_mut()
     }
 
     pub fn lookup_decls(&self, sign: &[Sign]) -> &[DeclRef] {
         match self.decl_signs.get(sign) {
             Some(vec) => &vec,
-            None      => &[],
+            None => &[],
         }
     }
 
     pub fn lookup_datas(&self, sign: &[Sign]) -> &[DataRef] {
         match self.data_signs.get(sign) {
             Some(vec) => &vec,
-            None      => &[],
+            None => &[],
         }
     }
 
@@ -90,5 +99,32 @@ impl SymbolTable {
 
         data_ref
     }
+}
 
+impl Storage<Data> for SymbolTable {
+    type Ref = DataRef;
+    fn get(&self, data_ref: DataRef) -> &Data {
+        &self.datas[data_ref.0]
+    }
+}
+
+impl Storage<Decl> for SymbolTable {
+    type Ref = DeclRef;
+    fn get(&self, decl_ref: DeclRef) -> &Decl {
+        &self.decls[decl_ref.0]
+    }
+}
+
+impl StorageMut<Data> for SymbolTable {
+    type RefMut = DataRef;
+    fn get_mut(&mut self, data_ref: DataRef) -> &mut Data {
+        &mut self.datas[data_ref.0]
+    }
+}
+
+impl StorageMut<Decl> for SymbolTable {
+    type RefMut = DeclRef;
+    fn get_mut(&mut self, decl_ref: DeclRef) -> &mut Decl {
+        &mut self.decls[decl_ref.0]
+    }
 }
