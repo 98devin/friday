@@ -7,6 +7,8 @@ pub enum FridayError {
     InvalidFilename(String),
 }
 
+impl error::Error for FridayError { }
+
 impl fmt::Display for FridayError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -14,5 +16,3 @@ impl fmt::Display for FridayError {
         }
     }
 }
-
-impl error::Error for FridayError { }

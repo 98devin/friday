@@ -1,5 +1,7 @@
+use lalrpop_util::lalrpop_mod;
+
 pub mod ast;
-pub mod parser;
+lalrpop_mod!(pub parser, "/parsing/parser.rs");
 
 #[derive(Debug, Clone)]
 pub struct OwnedToken(pub usize, pub String);

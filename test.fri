@@ -12,5 +12,12 @@ mod List = mod
     con Cons _, _
 end
 
+use List
+use .List
+
+mod M = .A.B.C
+
+let x = 10
+
 def len (use List in Nil) = 0
 def len (use List in Cons x, xs) = 1 + len xs

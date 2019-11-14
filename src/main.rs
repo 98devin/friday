@@ -1,3 +1,6 @@
+extern crate derive_more;
+extern crate lalrpop_util;
+
 mod error;
 mod ir;
 mod parsing;
@@ -5,7 +8,7 @@ mod parsing;
 pub use parsing::ast;
 pub use parsing::parser;
 
-use ir::{Module, ModuleRef, Storage, StorageMut};
+use ir::{Module, Storage};
 
 use std::env;
 
@@ -24,7 +27,12 @@ fn main() {
             }
         };
 
-        let modl: &Module = ctx.get(modl_ref);
-        println!("{}: {:?}", &modl.name(), modl);
+        let modl = ctx.modules().ir.get(modl_ref).expect("no ir for module");
+        println!("{}: {:?}", modl.name(), modl);
+    }
+
+    println!("--- all modules: ---");
+    for (_modl_ref, modl) in &ctx.modules().ir {
+        println!("{}: {:?}", modl.name(), modl);
     }
 }

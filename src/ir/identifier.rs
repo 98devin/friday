@@ -1,10 +1,12 @@
+use derive_more::{From, Into};
+
 use crate::ast;
-use crate::ir;
+use crate::ir::Storage;
 
 use std::collections::HashMap;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, From, Into)]
 pub struct Ident(usize);
 
 #[derive(Debug, Clone)]
@@ -40,10 +42,10 @@ impl NameTable {
     }
 }
 
-impl ir::Storage<String> for NameTable {
-    type Ref = Ident;
-
-    fn get(&self, id: Ident) -> &String {
-        &self.id_to_name[&id]
+impl<'s> Storage<Ident> for &'s NameTable {
+    type Stored = String;
+    type StoredRef = &'s String;
+    fn get(self, id: Ident) -> Option<Self::StoredRef> {
+        self.id_to_name.get(&id)
     }
 }

@@ -1,56 +1,59 @@
-use crate::ir::{Ident, Module, ModuleRef, ModuleTable, NameTable, Storage, StorageMut};
+use crate::ir::{Module, ModuleData, ModuleRef, NameTable};
 
 #[derive(Debug, Clone)]
 pub struct Context {
-    global_mod: ModuleRef,
-    modules: ModuleTable,
-    idents: NameTable,
+    pub global_modl: ModuleRef,
+    pub modules: ModuleData,
+    pub idents: NameTable,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct WithContext<'ctx, T> {
+    pub ctx: &'ctx Context,
+    pub val: T,
+}
+
+impl<'ctx, T> std::ops::Deref for WithContext<'ctx, T> {
+    type Target = Context;
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
 }
 
 impl Context {
     pub fn new() -> Context {
         let idents = NameTable::new();
-        let mut modules = ModuleTable::new();
-
-        let (global_mod, _) = modules.new_module("<global>".to_owned());
+        let mut modules = ModuleData::new();
+        let global_modl = modules.make_ref();
 
         Context {
-            global_mod,
+            global_modl,
             modules,
             idents,
         }
     }
 
-    pub fn modules(&self) -> &ModuleTable {
+    pub fn modules(&self) -> &ModuleData {
         &self.modules
     }
 
-    pub fn modules_mut(&mut self) -> &mut ModuleTable {
+    pub fn modules_mut(&mut self) -> &mut ModuleData {
         &mut self.modules
     }
 
-    pub fn global_mod_ref(&self) -> ModuleRef {
-        self.global_mod
+    pub fn idents(&self) -> &NameTable {
+        &self.idents
     }
-}
 
-impl Storage<Module> for Context {
-    type Ref = ModuleRef;
-    fn get(&self, mod_ref: ModuleRef) -> &Module {
-        self.modules.get(mod_ref)
+    pub fn idents_mut(&mut self) -> &mut NameTable {
+        &mut self.idents
     }
-}
 
-impl StorageMut<Module> for Context {
-    type RefMut = ModuleRef;
-    fn get_mut(&mut self, mod_ref: ModuleRef) -> &mut Module {
-        self.modules.get_mut(mod_ref)
+    pub fn global_modl(&self) -> ModuleRef {
+        self.global_modl
     }
-}
 
-impl Storage<String> for Context {
-    type Ref = Ident;
-    fn get(&self, id: Ident) -> &String {
-        self.idents.get(id)
+    pub fn wrap<T>(&self, t: T) -> WithContext<'_, T> {
+        WithContext { ctx: self, val: t }
     }
 }
