@@ -1,7 +1,6 @@
 use derive_more::{From, Into};
 
-use crate::ast;
-use crate::ir::Storage;
+use crate::storage::*;
 
 use std::collections::HashMap;
 
@@ -10,28 +9,28 @@ use std::collections::HashMap;
 pub struct Ident(usize);
 
 #[derive(Debug, Clone)]
-pub struct NameTable {
-    name_to_id: HashMap<String, Ident>,
-    id_to_name: HashMap<Ident, String>,
+pub struct NameTable<'ctx> {
+    name_to_id: HashMap<&'ctx str, Ident>,
+    id_to_name: HashMap<Ident, &'ctx str>,
 }
 
-impl NameTable {
-    pub fn new() -> NameTable {
+impl<'ctx> NameTable<'ctx> {
+    pub fn new() -> Self {
         NameTable {
             name_to_id: HashMap::new(),
             id_to_name: HashMap::new(),
         }
     }
 
-    pub fn get_ident(&self, name: &String) -> Option<Ident> {
+    pub fn get_ident(&self, name: &str) -> Option<Ident> {
         self.name_to_id.get(name).copied()
     }
 
-    pub fn make_ident(&mut self, name: String) -> Ident {
+    pub fn make_ident(&mut self, name: &'ctx str) -> Ident {
         use std::collections::hash_map::Entry;
 
         let next_ix = self.name_to_id.len();
-        match self.name_to_id.entry(name.clone()) {
+        match self.name_to_id.entry(name) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
                 let id = *vacant.insert(Ident(next_ix));
@@ -42,10 +41,10 @@ impl NameTable {
     }
 }
 
-impl<'s> Storage<Ident> for &'s NameTable {
-    type Stored = String;
-    type StoredRef = &'s String;
+impl<'s> Storage<Ident> for &'s NameTable<'_> {
+    type Stored = str;
+    type StoredRef = &'s str;
     fn get(self, id: Ident) -> Option<Self::StoredRef> {
-        self.id_to_name.get(&id)
+        self.id_to_name.get(&id).map(|s| *s)
     }
 }

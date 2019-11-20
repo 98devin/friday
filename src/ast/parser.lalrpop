@@ -1,0 +1,135 @@
+
+use bumpalo::{Bump};
+use crate::ast::*;
+use std::str::FromStr;
+use std::iter;
+
+grammar<'ctx>(arena: &'ctx Bump);
+
+Float      = r"[0-9](_?[0-9]+)*(.[0-9](_?[0-9]+)*)?";
+AlphaWord  = r"[a-zA-Z][a-zA-Z0-9_']*";
+SymbolWord = r"[~!@#$%^&*+=<>,:?`|;\[\]{}-]+";
+Empty      = r"_+([a-zA-Z][a-zA-Z0-9_]*)?";
+StringLit  = r#""([^"]|\\")*""#;
+
+String<Regex> : &'ctx str =
+    <s : Regex> => {
+        let b = arena.alloc_slice_copy(s.as_bytes());
+        unsafe { std::str::from_utf8_unchecked(b) }
+    };
+
+NonemptyList<T> = <T+>;
+
+Parenthesized<T> = "(" <T> ")";
+
+NonemptyListSep<T, Sep> : Vec<T> =
+    <mut ts: (<T> Sep)*> <tf: T> => { ts.push(tf); ts };
+
+Number : f64 = <Float> => f64::from_str(<>).unwrap();
+
+AlphaIdentifier : Ident<'ctx> =
+    <String<AlphaWord>> => Ident(<>);
+SymbolIdentifier : Ident<'ctx> =
+    <String<SymbolWord>> => Ident(<>);
+
+Identifier : Ident<'ctx> = {
+    <AlphaIdentifier>,
+    <SymbolIdentifier>,
+};
+
+Atom<T> : Atom<'ctx, T> = {
+    <Empty> => Atom::Hole,
+    <Number> => Atom::Number(<>),
+    <Identifier> => Atom::Ident(<>),
+    <s: String<StringLit>> => Atom::String(&s[1..s.len()-1]),
+    "(" ")"  => Atom::Unit,
+    <Parenthesized<T>> => Atom::Nested(arena.alloc(<>)),
+};
+
+MatchClause : (Patn<'ctx>, Expr<'ctx>) =
+    "|" <p : Patn> "=" <e : Expr> => (p, e);
+
+Decl : Decl<'ctx> = {
+    "let" <p : Patn> "=" <e : Expr> => Decl::Let(arena.alloc(p), arena.alloc(e)),
+    "def" <s : Signature> "=" <e : Expr> => Decl::Def(s, arena.alloc(e)),
+    "con" <s : SignatureC> => Decl::Con(s),
+    "mod" <n : Identifier> "=" <m : Modl> => Decl::Mod(n, arena.alloc(m)),
+    "use" <m : Modl> => Decl::Use(arena.alloc(m))
+};
+
+ModlPath : ModlPath<'ctx> =
+    <dot : "."?>
+    <path : NonemptyListSep<AlphaIdentifier,".">>
+    =>
+    ModlPath {
+        path: arena.alloc_slice_copy(&path),
+        absolute: dot.is_some()
+    };
+
+Modl : Modl<'ctx> = {
+    "mod" <d : Decl*> "end" => Modl::ModExp(arena.alloc_slice_copy(&d)),
+    <p : ModlPath> => Modl::Named(p),
+}
+
+Signature : Slice<'ctx, Sign<'ctx>> =
+    <Signature1> => arena.alloc_slice_copy(&<>);
+
+Signature1 : Vec<Sign<'ctx>> =
+    <patn : Parenthesized<Patn>?> <sig : Signature2> =>
+        patn.map(|p| Sign::Patn(arena.alloc(p)))
+            .into_iter()
+            .chain(sig)
+            .collect();
+
+Signature2 : Vec<Sign<'ctx>> =
+    <w : Identifier> <patn : Parenthesized<Patn>?> <sig : Signature2?> =>
+        {
+            let patn = patn.map(|p| Sign::Patn(arena.alloc(p)));
+            iter::once(Sign::Word(w))
+                .chain(patn)
+                .chain(sig.into_iter().flatten())
+                .collect()
+        };
+
+SignatureC : Slice<'ctx, Sign<'ctx>> =
+    <Signature1C> => arena.alloc_slice_copy(&<>);
+
+EmptyPattern : Patn<'ctx> =
+    <Empty> => Patn::Flat(arena.alloc_slice_copy(&[Atom::Hole]));
+
+Signature1C : Vec<Sign<'ctx>> =
+    <patn : EmptyPattern?> <sig : SignatureC2> =>
+        patn.map(|p| Sign::Patn(arena.alloc(p)))
+            .into_iter()
+            .chain(sig)
+            .collect();
+
+SignatureC2 : Vec<Sign<'ctx>> =
+    <w : Identifier> <patn : EmptyPattern?> <sig : SignatureC2?> =>
+        {
+            let patn = patn.map(|p| Sign::Patn(arena.alloc(p)));
+            iter::once(Sign::Word(w))
+                .chain(patn)
+                .chain(sig.into_iter().flatten())
+                .collect()
+        };
+
+Expr : Expr<'ctx> = {
+    "fun" <p : Patn> "=" <e : Expr>
+        => Expr::Func(arena.alloc(p), arena.alloc(e)),
+    "match" <e : Expr> <cls : MatchClause+> "end"
+        => Expr::Match(arena.alloc(e), arena.alloc_slice_copy(&cls)),
+    <decls : Decl+> "in" <e : Expr>
+        => Expr::Scoped(arena.alloc_slice_copy(&decls), arena.alloc(e)),
+    <Atom<Expr>+>
+        => Expr::Flat(arena.alloc_slice_copy(&<>)),
+};
+
+Patn : Patn<'ctx> = {
+    <decls : Decl+> "in" <p : Patn>
+        => Patn::Scoped(arena.alloc_slice_copy(&decls), arena.alloc(p)),
+    <Atom<Patn>+>
+        => Patn::Flat(arena.alloc_slice_copy(&<>)),
+}
+
+pub Sequence : Vec<Decl<'ctx>> = <Decl*>;

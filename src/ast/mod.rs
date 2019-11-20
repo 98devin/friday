@@ -1,66 +1,110 @@
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Ident(pub String);
+use lalrpop_util::lalrpop_mod;
+
+lalrpop_mod!(pub parser, "/ast/parser.rs");
 
 #[derive(Debug, Clone)]
-pub enum Atom<T> {
+pub struct OwnedToken(pub usize, pub String);
+
+impl From<parser::Token<'_>> for OwnedToken {
+    fn from(tok: parser::Token) -> OwnedToken {
+        OwnedToken(tok.0, tok.1.to_owned())
+    }
+}
+
+impl std::fmt::Display for OwnedToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        parser::Token(self.0, &self.1).fmt(f)
+    }
+}
+pub type Slice<'ctx, T> = &'ctx [T];
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Ident<'ctx>(pub &'ctx str);
+
+#[derive(Debug, Copy, Clone)]
+pub enum Atom<'ctx, T> {
     Hole,
     Unit,
     Number(f64),
-    Ident(Ident),
-    String(String),
-    Nested(Box<T>),
+    Ident(Ident<'ctx>),
+    String(&'ctx str),
+    Nested(&'ctx T),
 }
 
-#[derive(Debug, Clone)]
-pub enum Expr {
-    Flat(Vec<Atom<Expr>>),
-    Func(Box<Patn>, Box<Expr>),
-    Match(Box<Expr>, Vec<(Patn, Expr)>),
-    Scoped(Vec<Decl>, Box<Expr>),
+#[derive(Debug, Copy, Clone)]
+pub enum Expr<'ctx> {
+    Flat(&'ctx [Atom<'ctx, Expr<'ctx>>]),
+    Func(&'ctx Patn<'ctx>, &'ctx Expr<'ctx>),
+    Match(&'ctx Expr<'ctx>, &'ctx [(Patn<'ctx>, Expr<'ctx>)]),
+    Scoped(&'ctx [Decl<'ctx>], &'ctx Expr<'ctx>),
 }
 
-#[derive(Debug, Clone)]
-pub enum Decl {
-    Let(Box<Patn>, Box<Expr>),
-    Def(Vec<Sign>, Box<Expr>),
-    Con(Vec<Sign>),
-    Mod(Ident, Box<Modl>),
-    Use(Box<Modl>),
+#[derive(Debug, Copy, Clone)]
+pub enum Decl<'ctx> {
+    Let(&'ctx Patn<'ctx>, &'ctx Expr<'ctx>),
+    Def(&'ctx [Sign<'ctx>], &'ctx Expr<'ctx>),
+    Con(&'ctx [Sign<'ctx>]),
+    Mod(Ident<'ctx>, &'ctx Modl<'ctx>),
+    Use(&'ctx Modl<'ctx>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModlPath {
-    pub path: Vec<Ident>,
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ModlPath<'ctx> {
+    pub path: &'ctx [Ident<'ctx>],
     pub absolute: bool,
 }
 
 #[derive(Debug, Clone)]
-pub enum Modl {
-    ModExp(Vec<Decl>),
-    Named(ModlPath),
+pub enum Modl<'ctx> {
+    ModExp(&'ctx [Decl<'ctx>]),
+    Named(ModlPath<'ctx>),
 }
 
-#[derive(Debug, Clone)]
-pub enum Patn {
-    Flat(Vec<Atom<Patn>>),
-    Scoped(Vec<Decl>, Box<Patn>),
+#[derive(Debug, Copy, Clone)]
+pub enum Patn<'ctx> {
+    Flat(&'ctx [Atom<'ctx, Patn<'ctx>>]),
+    Scoped(&'ctx [Decl<'ctx>], &'ctx Patn<'ctx>),
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum Sign<'ctx> {
+    Word(Ident<'ctx>),
+    Patn(&'ctx Patn<'ctx>),
+}
+
+use crate::refs::*;
+use crate::storage::*;
+
 #[derive(Debug, Clone)]
-pub enum Sign {
-    Word(Ident),
-    Patn(Box<Patn>),
+pub struct AstStorage<'ctx> {
+    pub expr: VecStorage<self::Expr<'ctx>, ExprRef>,
+    pub patn: VecStorage<self::Patn<'ctx>, PatnRef>,
+    pub decl: VecStorage<self::Decl<'ctx>, DeclRef>,
+    pub cons: VecStorage<self::Decl<'ctx>, ConsRef>,
+    pub modl: VecStorage<self::Modl<'ctx>, ModlRef>,
+}
+
+impl AstStorage<'_> {
+    pub fn new() -> Self {
+        Self {
+            expr: VecStorage::new(),
+            patn: VecStorage::new(),
+            decl: VecStorage::new(),
+            cons: VecStorage::new(),
+            modl: VecStorage::new(),
+        }
+    }
 }
 
 use std::fmt::{self, Display, Formatter};
 
-impl Display for Ident {
+impl Display for Ident<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl<T> Display for Atom<T>
+impl<T> Display for Atom<'_, T>
 where
     T: Display,
 {
@@ -76,7 +120,7 @@ where
     }
 }
 
-impl Display for Expr {
+impl Display for Expr<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Expr::Flat(es) => {
@@ -92,14 +136,14 @@ impl Display for Expr {
 
             Expr::Match(exp, cases) => {
                 write!(f, "match {} ", exp)?;
-                for (pat, body) in cases {
+                for (pat, body) in cases.iter() {
                     write!(f, "| {} = {} ", pat, body)?;
                 }
                 write!(f, "end")
             }
 
             Expr::Scoped(decls, exp) => {
-                for decl in decls {
+                for decl in decls.iter() {
                     write!(f, "{} ", decl)?;
                 }
                 write!(f, "in {}", exp)
@@ -108,7 +152,7 @@ impl Display for Expr {
     }
 }
 
-impl Display for Decl {
+impl Display for Decl<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Decl::Let(pat, exp) => write!(f, "let {} = {}", pat, exp),
@@ -116,7 +160,7 @@ impl Display for Decl {
             Decl::Use(modl) => write!(f, "use {}", modl),
             Decl::Def(sig, exp) => {
                 write!(f, "def ")?;
-                for sign in sig {
+                for sign in sig.iter() {
                     match sign {
                         Sign::Word(id) => write!(f, "{} ", id)?,
                         Sign::Patn(pat) => write!(f, "({}) ", pat)?,
@@ -126,7 +170,7 @@ impl Display for Decl {
             }
             Decl::Con(sig) => {
                 write!(f, "con")?;
-                for sign in sig {
+                for sign in sig.iter() {
                     write!(f, " {}", sign)?;
                 }
                 Ok(())
@@ -135,7 +179,7 @@ impl Display for Decl {
     }
 }
 
-impl Display for ModlPath {
+impl Display for ModlPath<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if self.absolute {
             write!(f, ".")?;
@@ -151,12 +195,12 @@ impl Display for ModlPath {
     }
 }
 
-impl Display for Modl {
+impl Display for Modl<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Modl::ModExp(decls) => {
                 write!(f, "mod ")?;
-                for decl in decls {
+                for decl in decls.iter() {
                     write!(f, "{} ", decl)?;
                 }
                 write!(f, "end")
@@ -166,7 +210,7 @@ impl Display for Modl {
     }
 }
 
-impl Display for Patn {
+impl Display for Patn<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Patn::Flat(ps) => {
@@ -178,7 +222,7 @@ impl Display for Patn {
                 Ok(())
             }
             Patn::Scoped(decls, pat) => {
-                for decl in decls {
+                for decl in decls.iter() {
                     write!(f, "{} ", decl)?;
                 }
                 write!(f, "in {}", pat)
@@ -187,7 +231,7 @@ impl Display for Patn {
     }
 }
 
-impl Display for Sign {
+impl Display for Sign<'_> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Sign::Word(id) => write!(f, "{}", id),

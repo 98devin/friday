@@ -4,17 +4,42 @@ use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-pub trait Storage<Ref> {
-    type Stored;
+pub trait Storage<Ref>
+where
+    Self: Sized,
+{
+    type Stored: ?Sized;
     type StoredRef: Borrow<Self::Stored>;
     fn get(self, r: Ref) -> Option<Self::StoredRef>;
 }
 
 pub trait StorageMut<Ref>: Storage<Ref>
 where
+    Self::Stored: Sized,
     Self::StoredRef: BorrowMut<Self::Stored>,
 {
-    fn set(self, r: Ref, t: Self::Stored) -> Option<Self::Stored>;
+    fn set(self, r: Ref, t: Self::Stored) -> Self::StoredRef;
+    fn get_mut(self, r: Ref) -> Option<Self::StoredRef> {
+        self.get(r)
+    }
+
+    // fn get_or_set_with<F>(self, r: Ref, f: F) -> Self::StoredRef
+    // where
+    //     Ref: Clone,
+    //     F: FnOnce() -> Self::Stored,
+    // {
+    //     match self.get_mut(r.clone()) {
+    //         Some(stored_ref) => stored_ref,
+    //         None => self.set(r, f()),
+    //     }
+    // }
+
+    // fn get_or_set(self, r: Ref, t: Self::Stored) -> Self::StoredRef
+    // where
+    //     Ref: Clone,
+    // {
+    //     self.get_or_set_with(r, move || t)
+    // }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -142,10 +167,11 @@ impl<'s, T, Ref> StorageMut<Ref> for &'s mut VecStorage<T, Ref>
 where
     Ref: From<usize> + Into<usize>,
 {
-    fn set(self, r: Ref, t: Self::Stored) -> Option<Self::Stored> {
+    fn set(self, r: Ref, t: Self::Stored) -> Self::StoredRef {
         let ix = r.into();
         self.vec.resize_with(ix + 1, Default::default);
-        std::mem::replace(&mut self.vec[ix], Some(t))
+        self.vec[ix] = Some(t);
+        self.vec[ix].as_mut().unwrap()
     }
 }
 
@@ -248,8 +274,16 @@ impl<'s, T, Ref> StorageMut<Ref> for &'s mut HashStorage<T, Ref>
 where
     Ref: Eq + std::hash::Hash,
 {
-    fn set(self, r: Ref, t: Self::Stored) -> Option<Self::Stored> {
-        self.hash.insert(r, t)
+    fn set(self, r: Ref, t: Self::Stored) -> Self::StoredRef {
+        use std::collections::hash_map::Entry;
+
+        match self.hash.entry(r) {
+            Entry::Occupied(mut o) => {
+                *o.get_mut() = t;
+                o.into_mut()
+            }
+            Entry::Vacant(v) => v.insert(t),
+        }
     }
 }
 

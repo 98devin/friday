@@ -1,79 +1,121 @@
-pub mod context;
-pub mod definition;
-pub mod identifier;
-pub mod module;
-pub mod storage;
 pub mod symbol;
 
-pub use context::{Context, WithContext};
-pub use definition::{Cons, Decl, Expr, Literal, Patn, Sign};
-pub use identifier::{Ident, NameTable};
-pub use module::{Module, ModuleData, ModuleRef};
-pub use storage::{Storage, StorageMut};
-pub use symbol::{ConsRef, DeclRef, SymbolTable};
+use crate::refs::*;
+use crate::storage::*;
 
-use crate::error::FridayError::*;
+use crate::ast;
+use crate::ctx::Context;
+use crate::id::{Ident, NameTable};
+use crate::refs::*;
+use crate::symbol::SymbolTable;
 
-pub type Result<T> = ::std::result::Result<T, Box<dyn std::error::Error + 'static>>;
+use std::collections::HashMap;
 
-pub fn verify_file_path(path: &std::path::Path) -> Result<String> {
-    let file_ext = path.extension().and_then(std::ffi::OsStr::to_str);
-    let file_stem = path.file_stem().and_then(std::ffi::OsStr::to_str);
-
-    if file_ext != Some("fri") {
-        let path_str = path.to_str().unwrap();
-        return Err(InvalidFilename(path_str.to_owned()))?;
-    }
-
-    Ok(file_stem.unwrap().to_owned())
+#[derive(Debug, Clone, PartialEq)]
+pub enum Literal {
+    Unit,
+    Number(f64),
+    String(String),
 }
 
-impl Context {
-    pub fn process_file(&mut self, file_name: &str) -> Result<ModuleRef> {
-        use crate::ast;
-        use crate::parser::SequenceParser;
-        use crate::parsing::OwnedToken;
-        use std::fs;
-        use std::path::Path;
+// TODO: this might not be necessary.
+impl Eq for Literal {}
 
-        let parse_sequence = SequenceParser::new();
-        let file_path = Path::new(file_name);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expr {
+    Hole,
+    Literal(Literal),
+    Var(DeclRef),
+    Data(ConsRef, Vec<Expr>),
+    Apply(Box<Expr>, Box<Expr>),
+    Func(Box<Patn>, Box<Expr>),
+    Match(Box<Expr>, Vec<(Patn, Expr)>),
+    Scoped(ModlRef, Box<Expr>),
+}
 
-        let modl_name = verify_file_path(file_path)?;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Patn {
+    Empty,
+    Literal(Literal),
+    Binding(Vec<Ident>),
+    Data(ConsRef, Vec<Patn>),
+}
 
-        let file_text = fs::read_to_string(file_name)?;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Decl {
+    pub sig: Vec<Sign<Patn>>,
+}
 
-        let decls = match parse_sequence.parse(&file_text) {
-            Ok(decls) => decls,
-            Err(e) => Err(e.map_token(OwnedToken::from))?,
-        };
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cons {
+    pub sig: Vec<Sign>,
+}
 
-        let modl_ref = self.modules_mut().make_ref();
-        let mut new_modl = Module::new(modl_ref, modl_name);
-        new_modl.add_to_scope(self.global_modl());
+#[derive(Debug, Clone)]
+pub struct Modl {
+    pub name: String,
+    pub scope: Vec<ModlRef>,
+    pub decls: Vec<DeclRef>,
+    pub cons: Vec<ConsRef>,
+    pub symbols: SymbolTable,
+    pub children: HashMap<Ident, ModlRef>,
+}
 
-        for decl in &decls {
-            match decl {
-                ast::Decl::Def(sig, _) => {
-                    let ir_sig: Vec<_> =
-                        sig.iter().map(|s| self.sign_from_ast(s).forget()).collect();
-                    let decl_ref = new_modl.symbols_mut().new_decl(ir_sig);
-                    new_modl.symbols_mut().decl.ast.set(decl_ref, decl.clone());
-                }
-                ast::Decl::Con(sig) => {
-                    let ir_sig: Vec<_> =
-                        sig.iter().map(|s| self.sign_from_ast(s).forget()).collect();
-                    let cons_ref = new_modl.symbols_mut().new_cons(ir_sig);
-                    new_modl.symbols_mut().cons.ast.set(cons_ref, decl.clone());
-                }
-                other => println!("deferring: {}", other),
-            }
+impl Modl {
+    pub fn new(name: String) -> Self {
+        Modl {
+            name,
+            scope: Vec::new(),
+            decls: Vec::new(),
+            cons: Vec::new(),
+            symbols: SymbolTable::new(),
+            children: HashMap::new(),
         }
+    }
+}
 
-        let modules = self.modules_mut();
-        modules.ast.set(modl_ref, ast::Modl::ModExp(decls));
-        modules.ir.set(modl_ref, new_modl);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Sign<T = ()> {
+    Patn(T),
+    Word(Ident),
+}
 
-        Ok(modl_ref)
+impl<T> Sign<T> {
+    pub fn forget(self) -> Sign<()> {
+        match self {
+            Sign::Patn(_) => Sign::Patn(()),
+            Sign::Word(id) => Sign::Word(id),
+        }
+    }
+}
+
+impl<'ctx> ast::Sign<'ctx> {
+    pub fn from_ast(self, ctx: &Context<'ctx>) -> Sign<ast::Patn<'ctx>> {
+        let mut names = ctx.names.borrow_mut();
+        match self {
+            ast::Sign::Word(ast::Ident(id)) => Sign::Word(names.make_ident(id)),
+            ast::Sign::Patn(pat) => Sign::Patn(*pat),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IrStorage {
+    pub expr: VecStorage<self::Expr, ExprRef>,
+    pub patn: VecStorage<self::Patn, PatnRef>,
+    pub decl: VecStorage<self::Decl, DeclRef>,
+    pub cons: VecStorage<self::Cons, ConsRef>,
+    pub modl: VecStorage<self::Modl, ModlRef>,
+}
+
+impl IrStorage {
+    pub fn new() -> Self {
+        Self {
+            expr: VecStorage::new(),
+            patn: VecStorage::new(),
+            decl: VecStorage::new(),
+            cons: VecStorage::new(),
+            modl: VecStorage::new(),
+        }
     }
 }
