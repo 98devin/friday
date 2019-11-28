@@ -17,6 +17,10 @@ use .List
 
 mod M = .A.B.C
 
+use mod
+    mod A = B
+end
+
 let x = 10
 
 def len (use List in Nil) = 0

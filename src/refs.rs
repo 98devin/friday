@@ -8,11 +8,7 @@ pub struct Ref<T>(PhantomData<*const T>, usize);
 
 impl<T: std::fmt::Debug + Default> std::fmt::Debug for Ref<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if f.alternate() {
-            write!(f, "Ref({:#?},{:#?})", T::default(), self.1)
-        } else {
-            write!(f, "Ref({:?},{:?})", T::default(), self.1)
-        }
+        write!(f, "{:?}<{:?}>", T::default(), self.1)
     }
 }
 

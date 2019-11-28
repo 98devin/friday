@@ -4,42 +4,18 @@ use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-pub trait Storage<Ref>
-where
-    Self: Sized,
-{
-    type Stored: ?Sized;
-    type StoredRef: Borrow<Self::Stored>;
-    fn get(self, r: Ref) -> Option<Self::StoredRef>;
+pub trait Storage<'r, Ref> {
+    type Stored: ?Sized + 'r;
+    type StoredRef: Borrow<Self::Stored> + 'r;
+    fn get(&'r self, r: Ref) -> Option<Self::StoredRef>;
 }
 
-pub trait StorageMut<Ref>: Storage<Ref>
-where
-    Self::Stored: Sized,
-    Self::StoredRef: BorrowMut<Self::Stored>,
-{
-    fn set(self, r: Ref, t: Self::Stored) -> Self::StoredRef;
-    fn get_mut(self, r: Ref) -> Option<Self::StoredRef> {
-        self.get(r)
-    }
-
-    // fn get_or_set_with<F>(self, r: Ref, f: F) -> Self::StoredRef
-    // where
-    //     Ref: Clone,
-    //     F: FnOnce() -> Self::Stored,
-    // {
-    //     match self.get_mut(r.clone()) {
-    //         Some(stored_ref) => stored_ref,
-    //         None => self.set(r, f()),
-    //     }
-    // }
-
-    // fn get_or_set(self, r: Ref, t: Self::Stored) -> Self::StoredRef
-    // where
-    //     Ref: Clone,
-    // {
-    //     self.get_or_set_with(r, move || t)
-    // }
+pub trait StorageMut<'r, Ref>: Storage<'r, Ref> {
+    type StoredRefMut: BorrowMut<Self::Stored> + 'r;
+    fn get_mut(&'r mut self, r: Ref) -> Option<Self::StoredRefMut>;
+    fn set(&'r mut self, r: Ref, t: Self::Stored) -> Self::StoredRefMut
+    where
+        Self::Stored: Sized;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -133,13 +109,13 @@ where
     }
 }
 
-impl<'s, T, Ref> Storage<Ref> for &'s VecStorage<T, Ref>
+impl<'r, T: 'r, Ref> Storage<'r, Ref> for VecStorage<T, Ref>
 where
     Ref: From<usize> + Into<usize>,
 {
     type Stored = T;
-    type StoredRef = &'s T;
-    fn get(self, r: Ref) -> Option<Self::StoredRef> {
+    type StoredRef = &'r T;
+    fn get(&'r self, r: Ref) -> Option<Self::StoredRef> {
         let ix = r.into();
         match self.vec.get(ix) {
             Some(v) => v.as_ref(),
@@ -148,26 +124,21 @@ where
     }
 }
 
-impl<'s, T, Ref> Storage<Ref> for &'s mut VecStorage<T, Ref>
+impl<'r, T: 'r, Ref> StorageMut<'r, Ref> for VecStorage<T, Ref>
 where
     Ref: From<usize> + Into<usize>,
 {
-    type Stored = T;
-    type StoredRef = &'s mut T;
-    fn get(self, r: Ref) -> Option<Self::StoredRef> {
+    type StoredRefMut = &'r mut T;
+
+    fn get_mut(&'r mut self, r: Ref) -> Option<Self::StoredRefMut> {
         let ix = r.into();
         match self.vec.get_mut(ix) {
             Some(v) => v.as_mut(),
             None => None,
         }
     }
-}
 
-impl<'s, T, Ref> StorageMut<Ref> for &'s mut VecStorage<T, Ref>
-where
-    Ref: From<usize> + Into<usize>,
-{
-    fn set(self, r: Ref, t: Self::Stored) -> Self::StoredRef {
+    fn set(&'r mut self, r: Ref, t: Self::Stored) -> Self::StoredRefMut {
         let ix = r.into();
         self.vec.resize_with(ix + 1, Default::default);
         self.vec[ix] = Some(t);
@@ -248,35 +219,29 @@ where
     }
 }
 
-impl<'s, T, Ref> Storage<Ref> for &'s HashStorage<T, Ref>
+impl<'r, T: 'r, Ref> Storage<'r, Ref> for HashStorage<T, Ref>
 where
     Ref: Eq + std::hash::Hash,
 {
     type Stored = T;
-    type StoredRef = &'s T;
-    fn get(self, r: Ref) -> Option<Self::StoredRef> {
+    type StoredRef = &'r T;
+    fn get(&'r self, r: Ref) -> Option<Self::StoredRef> {
         self.hash.get(&r)
     }
 }
 
-impl<'s, T, Ref> Storage<Ref> for &'s mut HashStorage<T, Ref>
+impl<'r, T: 'r, Ref> StorageMut<'r, Ref> for HashStorage<T, Ref>
 where
     Ref: Eq + std::hash::Hash,
 {
-    type Stored = T;
-    type StoredRef = &'s mut T;
-    fn get(self, r: Ref) -> Option<Self::StoredRef> {
+    type StoredRefMut = &'r mut T;
+
+    fn get_mut(&'r mut self, r: Ref) -> Option<Self::StoredRefMut> {
         self.hash.get_mut(&r)
     }
-}
 
-impl<'s, T, Ref> StorageMut<Ref> for &'s mut HashStorage<T, Ref>
-where
-    Ref: Eq + std::hash::Hash,
-{
-    fn set(self, r: Ref, t: Self::Stored) -> Self::StoredRef {
+    fn set(&'r mut self, r: Ref, t: Self::Stored) -> Self::StoredRefMut {
         use std::collections::hash_map::Entry;
-
         match self.hash.entry(r) {
             Entry::Occupied(mut o) => {
                 *o.get_mut() = t;

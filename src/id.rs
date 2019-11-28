@@ -41,10 +41,10 @@ impl<'ctx> NameTable<'ctx> {
     }
 }
 
-impl<'s> Storage<Ident> for &'s NameTable<'_> {
+impl<'r> Storage<'r, Ident> for NameTable<'_> {
     type Stored = str;
-    type StoredRef = &'s str;
-    fn get(self, id: Ident) -> Option<Self::StoredRef> {
+    type StoredRef = &'r str;
+    fn get(&'r self, id: Ident) -> Option<Self::StoredRef> {
         self.id_to_name.get(&id).map(|s| *s)
     }
 }

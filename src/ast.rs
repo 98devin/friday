@@ -54,7 +54,7 @@ pub struct ModlPath<'ctx> {
     pub absolute: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum Modl<'ctx> {
     ModExp(&'ctx [Decl<'ctx>]),
     Named(ModlPath<'ctx>),
