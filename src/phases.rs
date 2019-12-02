@@ -30,9 +30,6 @@ pub fn process_file(ctx: &Context<'_>, file_name: &str) -> error::Result<ModlRef
 
     let modl_name = verify_file_path(file_path)?;
 
-    let arena_modl_name = ctx.arena.alloc_slice_copy(modl_name.as_bytes());
-    let arena_modl_name = unsafe { std::str::from_utf8_unchecked(arena_modl_name) };
-
     let file_text = fs::read_to_string(file_name)?;
 
     let decls = match parse_sequence.parse(ctx.arena, &file_text) {
@@ -54,6 +51,9 @@ pub fn process_file(ctx: &Context<'_>, file_name: &str) -> error::Result<ModlRef
     {
         let mut ir = ctx.ir.borrow_mut();
         let mut names = ctx.names.borrow_mut();
+
+        let arena_modl_name = ctx.arena.alloc_slice_copy(modl_name.as_bytes());
+        let arena_modl_name = unsafe { std::str::from_utf8_unchecked(arena_modl_name) };
 
         let global_ir = ir
             .modl
@@ -140,7 +140,6 @@ fn resolve_alias_target_check_loops<'ctx>(
     mut seen_refs: HashSet<ModlRef>,
 ) -> error::Result<ModlRef> {
     let ir = ctx.ir.borrow();
-    let ast = ctx.ast.borrow();
     let modl_ir = ir.modl.get(modl_ref).unwrap();
     let alias = match modl_ir.as_alias() {
         Ok(alias) => alias,

@@ -1,4 +1,4 @@
-use crate::ast::{self, AstStorage};
+use crate::ast::AstStorage;
 use crate::id::NameTable;
 use crate::ir::{self, IrStorage};
 use crate::refs::*;
