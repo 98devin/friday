@@ -7,21 +7,41 @@ def fib (n) =
           fib (n - 2)
     end
 
+mod M = mod
+    mod Test = mod end
+end
+
 mod List = mod
     con Nil
     con Cons _, _
+    
+    mod Ops = mod
+        def # (l) = len l
+    end
+
+    mod N = M
+
+    def len (Nil) = 0
+    def len (Cons x, xs) = 1 + len xs
+end
+
+mod A = mod
+    mod A = A
+    mod B = B
+end
+
+mod B = mod
+    mod A = A
+    mod B = B
 end
 
 use List
-use .List
+use List.Ops
+use .test.List.N.Test
 
-mod M = .A.B.C
-
-use mod
-    mod A = B
-end
+use B
+use A.B
+use .test.B.A.B.A.B
 
 let x = 10
 
-def len (use List in Nil) = 0
-def len (use List in Cons x, xs) = 1 + len xs

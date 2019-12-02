@@ -1,7 +1,8 @@
-use crate::ast::AstStorage;
+use crate::ast::{self, AstStorage};
 use crate::id::NameTable;
-use crate::ir::IrStorage;
+use crate::ir::{self, IrStorage};
 use crate::refs::*;
+use crate::storage::*;
 
 use bumpalo::Bump;
 use std::cell::RefCell;
@@ -41,7 +42,10 @@ impl<'ctx, T> std::ops::Deref for WithContext<'ctx, T> {
 impl<'ctx> Context<'ctx> {
     pub fn new(arena: &'ctx Bump) -> Self {
         let mut refs = IdCounter::new();
+        let mut ir = IrStorage::new();
         let global_modl = refs.modl.make_ref();
+
+        ir.modl.set(global_modl, ir::Modl::new("<global>".into()));
 
         Context {
             arena,
@@ -49,7 +53,7 @@ impl<'ctx> Context<'ctx> {
             refs: RefCell::new(refs),
             names: RefCell::new(NameTable::new()),
             ast: RefCell::new(AstStorage::new()),
-            ir: RefCell::new(IrStorage::new()),
+            ir: RefCell::new(ir),
         }
     }
 

@@ -3,7 +3,8 @@ pub mod symbol;
 use crate::storage::*;
 
 use crate::ast;
-use crate::ctx::Context;
+use crate::ctx::{Context, WithContext};
+use crate::error;
 use crate::id::Ident;
 use crate::refs::*;
 use crate::symbol::SymbolTable;
@@ -86,17 +87,31 @@ impl Modl {
         })
     }
 
-    pub fn as_record(&mut self) -> &mut ModlRecord {
+    pub fn as_record(&self) -> error::Result<&ModlRecord> {
         match self {
-            Modl::Record(ref mut record) => record,
-            Modl::Alias(_) => panic!("Module was not a record!"),
+            Modl::Record(ref record) => Ok(record),
+            Modl::Alias(_) => Err(error::UnexpectedModuleAlias)?,
         }
     }
 
-    pub fn as_alias(&mut self) -> &mut ModlAlias {
+    pub fn as_record_mut(&mut self) -> error::Result<&mut ModlRecord> {
         match self {
-            Modl::Alias(ref mut alias) => alias,
-            Modl::Record(_) => panic!("Module was not an alias!"),
+            Modl::Record(ref mut record) => Ok(record),
+            Modl::Alias(_) => Err(error::UnexpectedModuleAlias)?,
+        }
+    }
+
+    pub fn as_alias(&self) -> error::Result<&ModlAlias> {
+        match self {
+            Modl::Alias(ref alias) => Ok(alias),
+            Modl::Record(_) => Err(error::UnexpectedModuleRecord)?,
+        }
+    }
+
+    pub fn as_alias_mut(&mut self) -> error::Result<&mut ModlAlias> {
+        match self {
+            Modl::Alias(ref mut alias) => Ok(alias),
+            Modl::Record(_) => Err(error::UnexpectedModuleRecord)?,
         }
     }
 
@@ -160,5 +175,23 @@ impl IrStorage {
             cons: VecStorage::new(),
             modl: VecStorage::new(),
         }
+    }
+}
+
+use std::fmt;
+
+impl fmt::Display for WithContext<'_, &ModlAlias> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let names = self.names.borrow();
+        write!(f, "{} = ", &self.val.name)?;
+
+        if self.val.scope == self.global_modl() {
+            write!(f, ".")?;
+        }
+        let (&last, init) = self.val.path.split_last().unwrap();
+        for &path_elt in init {
+            write!(f, "{}.", names.get(path_elt).unwrap())?;
+        }
+        write!(f, "{}", names.get(last).unwrap())
     }
 }

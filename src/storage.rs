@@ -1,7 +1,7 @@
 use derive_more::{From, Into};
 
 use std::borrow::{Borrow, BorrowMut};
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 use std::marker::PhantomData;
 
 pub trait Storage<'r, Ref> {
@@ -19,10 +19,7 @@ pub trait StorageMut<'r, Ref>: Storage<'r, Ref> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct RefCounter<Ref>
-where
-    Ref: From<usize>,
-{
+pub struct RefCounter<Ref> {
     _ref: PhantomData<*const Ref>,
     count: usize,
 }
@@ -45,10 +42,23 @@ where
     }
 }
 
-pub struct RefCounterIter<Ref>
+impl<Ref> IntoIterator for &'_ RefCounter<Ref>
 where
     Ref: From<usize>,
 {
+    type Item = Ref;
+    type IntoIter = RefCounterIter<Ref>;
+    fn into_iter(self) -> Self::IntoIter {
+        RefCounterIter {
+            _ref: PhantomData,
+            curr: 0,
+            stop: self.count,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RefCounterIter<Ref> {
     _ref: PhantomData<*const Ref>,
     curr: usize,
     stop: usize,
@@ -66,21 +76,6 @@ where
         let next = Some(Ref::from(self.curr));
         self.curr += 1;
         next
-    }
-}
-
-impl<Ref> IntoIterator for &'_ RefCounter<Ref>
-where
-    Ref: From<usize>,
-{
-    type Item = Ref;
-    type IntoIter = RefCounterIter<Ref>;
-    fn into_iter(self) -> Self::IntoIter {
-        RefCounterIter {
-            _ref: PhantomData,
-            curr: 0,
-            stop: self.count,
-        }
     }
 }
 
@@ -104,8 +99,20 @@ where
     pub fn new() -> Self {
         VecStorage {
             _ref: PhantomData,
-            vec: Vec::new(),
+            vec: Vec::with_capacity(16),
         }
+    }
+
+    fn convert_pair((i, x): (usize, Option<T>)) -> Option<(Ref, T)> {
+        x.map(|v| (Ref::from(i), v))
+    }
+
+    fn convert_pair_ref((i, x): (usize, &Option<T>)) -> Option<(Ref, &T)> {
+        x.as_ref().map(|v| (Ref::from(i), v))
+    }
+
+    fn convert_pair_ref_mut((i, x): (usize, &mut Option<T>)) -> Option<(Ref, &mut T)> {
+        x.as_mut().map(|v| (Ref::from(i), v))
     }
 }
 
@@ -140,7 +147,9 @@ where
 
     fn set(&'r mut self, r: Ref, t: Self::Stored) -> Self::StoredRefMut {
         let ix = r.into();
-        self.vec.resize_with(ix + 1, Default::default);
+        if ix >= self.vec.len() {
+            self.vec.resize_with(ix + 1, Default::default);
+        }
         self.vec[ix] = Some(t);
         self.vec[ix].as_mut().unwrap()
     }
@@ -152,51 +161,56 @@ where
     Ref: From<usize> + Into<usize>,
 {
     type Item = (Ref, T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = std::iter::FilterMap<
+        std::iter::Enumerate<std::vec::IntoIter<Option<T>>>,
+        fn((usize, Option<T>)) -> Option<(Ref, T)>,
+    >;
+
     fn into_iter(self) -> Self::IntoIter {
-        let v: Vec<_> = self
-            .vec
+        self.vec
             .into_iter()
             .enumerate()
-            .filter_map(|(i, x)| x.map(|v| (Ref::from(i), v)))
-            .collect();
-        v.into_iter()
+            .filter_map(VecStorage::convert_pair)
     }
 }
 
 // FIXME: Implement actual iterator struct.
 impl<'s, T, Ref> IntoIterator for &'s VecStorage<T, Ref>
 where
-    Ref: From<usize> + Into<usize>,
+    Ref: From<usize> + Into<usize> + Clone,
 {
     type Item = (Ref, &'s T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    type IntoIter = std::iter::FilterMap<
+        std::iter::Enumerate<std::slice::Iter<'s, Option<T>>>,
+        fn((usize, &'s Option<T>)) -> Option<(Ref, &'s T)>,
+    >;
+
     fn into_iter(self) -> Self::IntoIter {
-        let v: Vec<_> = self
-            .vec
+        self.vec
             .iter()
             .enumerate()
-            .filter_map(|(i, x)| x.as_ref().map(|v| (Ref::from(i), v)))
-            .collect();
-        v.into_iter()
+            .filter_map(VecStorage::convert_pair_ref)
     }
 }
 
 // FIXME: Implement actual iterator struct.
 impl<'s, T, Ref> IntoIterator for &'s mut VecStorage<T, Ref>
 where
-    Ref: From<usize> + Into<usize>,
+    Ref: From<usize> + Into<usize> + Clone,
 {
     type Item = (Ref, &'s mut T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    type IntoIter = std::iter::FilterMap<
+        std::iter::Enumerate<std::slice::IterMut<'s, Option<T>>>,
+        fn((usize, &'s mut Option<T>)) -> Option<(Ref, &'s mut T)>,
+    >;
+
     fn into_iter(self) -> Self::IntoIter {
-        let v: Vec<_> = self
-            .vec
+        self.vec
             .iter_mut()
             .enumerate()
-            .filter_map(|(i, x)| x.as_mut().map(|v| (Ref::from(i), v)))
-            .collect();
-        v.into_iter()
+            .filter_map(VecStorage::convert_pair_ref_mut)
     }
 }
 
@@ -216,6 +230,13 @@ where
         Self {
             hash: HashMap::new(),
         }
+    }
+
+    fn clone_first_ref((r, x): (&Ref, T)) -> (Ref, T)
+    where
+        Ref: Clone,
+    {
+        (r.clone(), x)
     }
 }
 
@@ -269,10 +290,10 @@ where
     Ref: Clone + Eq + std::hash::Hash,
 {
     type Item = (Ref, &'s T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = std::iter::Map<hash_map::Iter<'s, Ref, T>, fn((&Ref, &'s T)) -> (Ref, &'s T)>;
+
     fn into_iter(self) -> Self::IntoIter {
-        let v: Vec<_> = self.hash.iter().map(|(r, t)| (r.clone(), t)).collect();
-        v.into_iter()
+        self.hash.iter().map(HashStorage::clone_first_ref)
     }
 }
 
@@ -282,9 +303,10 @@ where
     Ref: Clone + Eq + std::hash::Hash,
 {
     type Item = (Ref, &'s mut T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter =
+        std::iter::Map<hash_map::IterMut<'s, Ref, T>, fn((&Ref, &'s mut T)) -> (Ref, &'s mut T)>;
+
     fn into_iter(self) -> Self::IntoIter {
-        let v: Vec<_> = self.hash.iter_mut().map(|(r, t)| (r.clone(), t)).collect();
-        v.into_iter()
+        self.hash.iter_mut().map(HashStorage::clone_first_ref)
     }
 }
